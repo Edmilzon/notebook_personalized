@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.example.notebook_personalized.R
+import com.example.notebook_personalized.ui.notes.NotesListFragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity() {
@@ -16,5 +17,11 @@ class MainActivity : AppCompatActivity() {
         val navController = navHostFragment.navController
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_nav)
         bottomNav.setupWithNavController(navController)
+    }
+
+    fun onNoteSaved() {
+        // Notificar a NotesListFragment para actualizar la lista
+        val notesFragment = supportFragmentManager.fragments.find { it is NotesListFragment } as? NotesListFragment
+        notesFragment?.loadNotes()
     }
 } 

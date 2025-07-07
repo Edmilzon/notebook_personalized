@@ -2,12 +2,14 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/canvas_bg">
 
     <com.example.notebook_personalized.ui.drawing.DrawingCanvasView
         android:id="@+id/drawing_canvas"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:background="@color/canvas_bg" />
 
     <!-- Barra de herramientas flotante -->
     <LinearLayout
@@ -17,10 +19,82 @@
         android:orientation="horizontal"
         android:background="@drawable/toolbar_bg"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="32dp"
+        android:layout_marginBottom="96dp"
         android:elevation="8dp"
         android:padding="8dp">
-        <!-- Aquí irán los botones de herramientas -->
+
+        <ImageButton
+            android:id="@+id/btn_color"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_edit"
+            android:contentDescription="Color" />
+
+        <ImageButton
+            android:id="@+id/btn_stroke"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_manage"
+            android:contentDescription="Grosor" />
+
+        <ImageButton
+            android:id="@+id/btn_eraser"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_delete"
+            android:contentDescription="Borrador" />
+
+        <ImageButton
+            android:id="@+id/btn_undo"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_revert"
+            android:contentDescription="Deshacer" />
+
+        <ImageButton
+            android:id="@+id/btn_redo"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_rotate"
+            android:contentDescription="Rehacer" />
+
+        <ImageButton
+            android:id="@+id/btn_clear"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:contentDescription="Limpiar" />
+
+        <ImageButton
+            android:id="@+id/btn_save"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_save"
+            android:contentDescription="Guardar/Exportar" />
+
+        <ImageButton
+            android:id="@+id/btn_text"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_edit"
+            android:contentDescription="Texto" />
+
+        <ImageButton
+            android:id="@+id/btn_image"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_gallery"
+            android:contentDescription="Imagen" />
+
     </LinearLayout>
 
 </FrameLayout> 

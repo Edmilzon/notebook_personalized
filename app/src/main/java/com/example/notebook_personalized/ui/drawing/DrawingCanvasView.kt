@@ -10,6 +10,10 @@ import com.example.notebook_personalized.data.model.PointF
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.example.notebook_personalized.data.model.TextElement
+import com.example.notebook_personalized.data.model.ImageElement
+import android.graphics.Rect
+import android.graphics.Paint.Align
 
 class DrawingCanvasView @JvmOverloads constructor(
     context: Context,
@@ -37,16 +41,51 @@ class DrawingCanvasView @JvmOverloads constructor(
     private val backgroundColor: Int = Color.WHITE // Puedes cambiarlo si tu fondo es de otro color
 
     private val strokes = mutableListOf<Stroke>()
+    private val textElements = mutableListOf<TextElement>()
+    private val imageElements = mutableListOf<ImageElement>()
+    private var selectedText: TextElement? = null
+    private var movingText: TextElement? = null
+    private var movingImage: ImageElement? = null
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private val textPaint = Paint().apply {
+        color = Color.BLACK
+        textSize = 48f
+        isAntiAlias = true
+        textAlign = Align.LEFT
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas.drawColor(backgroundColor) // Asegura que el fondo sea blanco
-        // Dibuja todos los paths guardados
+        canvas.drawColor(backgroundColor)
+        // Dibuja paths
         for ((path, paint) in paths) {
             canvas.drawPath(path, paint)
         }
-        // Dibuja el path actual
         canvas.drawPath(currentPath, drawPaint)
+        // Dibuja imágenes
+        for (img in imageElements) {
+            canvas.drawBitmap(img.bitmap, null, Rect(img.x.toInt(), img.y.toInt(), (img.x+img.width).toInt(), (img.y+img.height).toInt()), null)
+        }
+        // Dibuja textos
+        for (txt in textElements) {
+            textPaint.color = txt.color
+            textPaint.textSize = txt.textSize
+            textPaint.style = Paint.Style.FILL
+            canvas.drawText(txt.text, txt.x, txt.y, textPaint)
+            if (txt.isSelected) {
+                // Dibuja un rectángulo alrededor del texto seleccionado
+                val bounds = Rect()
+                textPaint.getTextBounds(txt.text, 0, txt.text.length, bounds)
+                bounds.offset(txt.x.toInt(), txt.y.toInt() - bounds.height())
+                val selPaint = Paint().apply {
+                    color = Color.BLUE
+                    style = Paint.Style.STROKE
+                    strokeWidth = 3f
+                }
+                canvas.drawRect(bounds, selPaint)
+            }
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -54,25 +93,86 @@ class DrawingCanvasView @JvmOverloads constructor(
         val y = event.y
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                // Prioridad: seleccionar texto o imagen
+                selectedText = findTextAt(x, y)
+                movingText = selectedText
+                movingImage = findImageAt(x, y)
+                lastTouchX = x
+                lastTouchY = y
+                if (movingText != null) {
+                    textElements.forEach { it.isSelected = false }
+                    movingText?.isSelected = true
+                    invalidate()
+                    return true
+                } else if (movingImage != null) {
+                    invalidate()
+                    return true
+                } else {
+                    textElements.forEach { it.isSelected = false }
+                }
                 currentPath = Path()
                 currentPath.moveTo(x, y)
                 invalidate()
             }
             MotionEvent.ACTION_MOVE -> {
+                if (movingText != null) {
+                    val dx = x - lastTouchX
+                    val dy = y - lastTouchY
+                    movingText?.x = (movingText?.x ?: 0f) + dx
+                    movingText?.y = (movingText?.y ?: 0f) + dy
+                    lastTouchX = x
+                    lastTouchY = y
+                    invalidate()
+                    return true
+                } else if (movingImage != null) {
+                    val dx = x - lastTouchX
+                    val dy = y - lastTouchY
+                    movingImage?.x = (movingImage?.x ?: 0f) + dx
+                    movingImage?.y = (movingImage?.y ?: 0f) + dy
+                    lastTouchX = x
+                    lastTouchY = y
+                    invalidate()
+                    return true
+                }
                 currentPath.lineTo(x, y)
                 invalidate()
             }
             MotionEvent.ACTION_UP -> {
-                // Guarda el path actual con una copia del Paint
+                movingText = null
+                movingImage = null
                 val newPaint = Paint(drawPaint)
                 paths.add(Pair(currentPath, newPaint))
                 currentPath = Path()
-                // Al dibujar, se limpia la pila de deshacer
                 undonePaths.clear()
                 invalidate()
             }
         }
         return true
+    }
+
+    private fun findTextAt(x: Float, y: Float): TextElement? {
+        for (txt in textElements.reversed()) {
+            val bounds = Rect()
+            textPaint.textSize = txt.textSize
+            textPaint.getTextBounds(txt.text, 0, txt.text.length, bounds)
+            val left = txt.x
+            val top = txt.y - bounds.height()
+            val right = txt.x + bounds.width()
+            val bottom = txt.y
+            if (x in left..right && y in top..bottom) {
+                return txt
+            }
+        }
+        return null
+    }
+
+    private fun findImageAt(x: Float, y: Float): ImageElement? {
+        for (img in imageElements.reversed()) {
+            if (x >= img.x && x <= img.x + img.width && y >= img.y && y <= img.y + img.height) {
+                return img
+            }
+        }
+        return null
     }
 
     // Métodos públicos para futuras herramientas
@@ -218,5 +318,37 @@ class DrawingCanvasView @JvmOverloads constructor(
             e.printStackTrace()
             false
         }
+    }
+
+    // Métodos públicos para agregar y editar texto/imágenes
+    fun addTextElement(text: String, x: Float, y: Float, color: Int = Color.BLACK, textSize: Float = 48f) {
+        textElements.add(TextElement(text, x, y, color, textSize))
+        invalidate()
+    }
+
+    fun editSelectedText(newText: String) {
+        selectedText?.let {
+            it.text = newText
+            invalidate()
+        }
+    }
+
+    fun setSelectedTextColor(color: Int) {
+        selectedText?.let {
+            it.color = color
+            invalidate()
+        }
+    }
+
+    fun setSelectedTextSize(size: Float) {
+        selectedText?.let {
+            it.textSize = size
+            invalidate()
+        }
+    }
+
+    fun addImageElement(bitmap: Bitmap, x: Float, y: Float, width: Float, height: Float) {
+        imageElements.add(ImageElement(bitmap, x, y, width, height))
+        invalidate()
     }
 } 
