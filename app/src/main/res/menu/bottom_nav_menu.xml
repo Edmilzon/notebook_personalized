@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/drawingFragment"
+        android:icon="@drawable/ic_brush"
+        android:title="Pizarra" />
+    <item
+        android:id="@+id/notesListFragment"
+        android:icon="@drawable/ic_notes"
+        android:title="Notas" />
+</menu> 
