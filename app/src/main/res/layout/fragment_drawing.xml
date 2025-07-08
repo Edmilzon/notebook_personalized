@@ -40,7 +40,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="@android:color/transparent"
-            android:src="@android:drawable/ic_menu_edit"
+            android:src="@drawable/ic_text"
             android:contentDescription="Texto" />
 
         <ImageButton

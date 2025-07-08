@@ -34,6 +34,8 @@ import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ToggleButton
+import android.widget.FrameLayout
+import com.example.notebook_personalized.ui.drawing.DrawingCanvasView.Tool
 
 class DrawingFragment : Fragment() {
     private lateinit var drawingCanvas: DrawingCanvasView
@@ -42,9 +44,13 @@ class DrawingFragment : Fragment() {
     private var pendingImagePosition: Pair<Float, Float>? = null
     private var noteName: String? = null
     private var autoSavePath: String? = null
-    private enum class Tool { NONE, DRAW, ERASER, TEXT }
-    private var activeTool: Tool = Tool.NONE
     private lateinit var contextualMenu: LinearLayout
+    private lateinit var btnDraw: ImageButton
+    private lateinit var btnEraser: ImageButton
+    private lateinit var btnText: ImageButton
+    private lateinit var btnImage: ImageButton
+    private var jsonPath: String? = null
+    private var isImageInsertMode: Boolean = false
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
@@ -56,6 +62,7 @@ class DrawingFragment : Fragment() {
                 pendingImagePosition = null
             }
         }
+        isImageInsertMode = false
     }
 
     override fun onCreateView(
@@ -70,6 +77,12 @@ class DrawingFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         drawingCanvas = view.findViewById(R.id.drawing_canvas)
         contextualMenu = view.findViewById(R.id.contextual_menu)
+        val rootLayout = view as FrameLayout
+        btnDraw = view.findViewById(R.id.btn_draw)
+        btnEraser = view.findViewById(R.id.btn_eraser)
+        btnText = view.findViewById(R.id.btn_text)
+        btnImage = view.findViewById(R.id.btn_image)
+        setActiveTool(Tool.TEXT)
 
         // Obtener el nombre de la nota si viene de los argumentos
         noteName = arguments?.getString("noteName")
@@ -78,10 +91,11 @@ class DrawingFragment : Fragment() {
         }
 
         // Cargar nota JSON si se abre desde la lista
-        arguments?.getString("jsonPath")?.let { jsonPath ->
+        jsonPath = arguments?.getString("jsonPath")
+        jsonPath?.let { path ->
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
             val adapter = moshi.adapter(DrawingData::class.java)
-            val file = File(jsonPath)
+            val file = File(path)
             if (file.exists()) {
                 val json = file.readText()
                 val loadedData = adapter.fromJson(json)
@@ -91,38 +105,56 @@ class DrawingFragment : Fragment() {
             }
         }
 
-        // Guardado automático cada vez que se dibuja o edita
+        // Configurar el onTouchListener sin guardado automático
         drawingCanvas.setOnTouchListener { v, event ->
-            if (activeTool == Tool.TEXT && event.action == MotionEvent.ACTION_DOWN) {
-                showTextDialog(event.x, event.y)
-                return@setOnTouchListener true
+            when (activeTool) {
+                Tool.TEXT -> {
+                    if (event.action == MotionEvent.ACTION_DOWN) {
+                        val color = getCurrentTextColorFromMenu() ?: Color.BLACK
+                        val size = getCurrentTextSizeFromMenu() ?: 48f
+                        drawingCanvas.startTextInput(event.x, event.y, color, size, rootLayout)
+                        return@setOnTouchListener true
+                    }
+                }
+                Tool.IMAGE -> {
+                    if (isImageInsertMode) {
+                        if (event.action == MotionEvent.ACTION_DOWN) {
+                            val touchedImage = drawingCanvas.findImageAt(event.x, event.y)
+                            if (touchedImage == null) {
+                                pendingImagePosition = Pair(event.x, event.y)
+                                pickImageLauncher.launch("image/*")
+                            } else {
+                                Toast.makeText(requireContext(), "Toca un área vacía para agregar una imagen", Toast.LENGTH_SHORT).show()
+                            }
+                            return@setOnTouchListener true
+                        }
+                    } else {
+                        return@setOnTouchListener v.onTouchEvent(event)
+                    }
+                }
+                Tool.DRAW, Tool.ERASER -> {
+                    val handled = v.onTouchEvent(event)
+                    return@setOnTouchListener handled
+                }
+                else -> return@setOnTouchListener false
             }
-            val handled = v.onTouchEvent(event)
-            autoSaveNote()
-            return@setOnTouchListener handled
+            return@setOnTouchListener false
         }
 
         // Lógica de selección de herramienta
-        val btnDraw = view.findViewById<ImageButton>(R.id.btn_draw)
-        val btnEraser = view.findViewById<ImageButton>(R.id.btn_eraser)
-        val btnText = view.findViewById<ImageButton>(R.id.btn_text)
         val btnUndo = view.findViewById<ImageButton>(R.id.btn_undo)
         val btnRedo = view.findViewById<ImageButton>(R.id.btn_redo)
         val btnExport = view.findViewById<ImageButton>(R.id.btn_export)
-        val btnImage = view.findViewById<ImageButton>(R.id.btn_image)
         val btnExit = view.findViewById<ImageButton>(R.id.btn_exit)
 
         btnDraw.setOnClickListener {
             setActiveTool(Tool.DRAW)
-            drawingCanvas.setEraserMode(false)
         }
         btnEraser.setOnClickListener {
             setActiveTool(Tool.ERASER)
-            drawingCanvas.setEraserMode(true)
         }
         btnText.setOnClickListener {
             setActiveTool(Tool.TEXT)
-            drawingCanvas.setEraserMode(false)
         }
         btnUndo.setOnClickListener {
             drawingCanvas.undo()
@@ -134,16 +166,7 @@ class DrawingFragment : Fragment() {
             showSaveOptions()
         }
         btnImage.setOnClickListener {
-            Toast.makeText(requireContext(), "Toca la pizarra para colocar la imagen", Toast.LENGTH_SHORT).show()
-            drawingCanvas.setOnTouchListener { v, event ->
-                if (event.action == MotionEvent.ACTION_DOWN) {
-                    pendingImagePosition = Pair(event.x, event.y)
-                    pickImageLauncher.launch("image/*")
-                    drawingCanvas.setOnTouchListener(null)
-                    return@setOnTouchListener true
-                }
-                false
-            }
+            setActiveTool(Tool.IMAGE)
         }
         btnExit.setOnClickListener {
             saveEditableNote()
@@ -154,14 +177,17 @@ class DrawingFragment : Fragment() {
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 setActiveTool(Tool.NONE)
-                drawingCanvas.setEraserMode(false)
                 findNavController().popBackStack()
             }
         })
     }
 
+    private var activeTool: Tool = Tool.NONE
+
     private fun setActiveTool(tool: Tool) {
         activeTool = tool
+        drawingCanvas.setActiveTool(tool)
+        drawingCanvas.closeActiveEditText()
         when (tool) {
             Tool.DRAW -> {
                 showDrawOptions()
@@ -175,11 +201,16 @@ class DrawingFragment : Fragment() {
                 showTextOptions()
                 drawingCanvas.setEraserMode(false)
             }
+            Tool.IMAGE -> {
+                showImageOptions()
+                drawingCanvas.setEraserMode(false)
+            }
             Tool.NONE -> {
                 contextualMenu.visibility = View.GONE
                 drawingCanvas.setEraserMode(false)
             }
         }
+        updateNavbarSelection()
     }
 
     private fun showDrawOptions() {
@@ -241,18 +272,29 @@ class DrawingFragment : Fragment() {
     private fun showTextOptions() {
         contextualMenu.removeAllViews()
         contextualMenu.visibility = View.VISIBLE
-        // Selector de color
+        // Selector de color como cuadritos
         val colors = arrayOf(Color.BLACK, Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.WHITE)
-        val colorNames = arrayOf("Negro", "Rojo", "Verde", "Azul", "Amarillo", "Blanco")
-        val colorGroup = RadioGroup(requireContext())
-        colorGroup.orientation = RadioGroup.HORIZONTAL
-        colors.forEachIndexed { i, color ->
-            val radio = RadioButton(requireContext())
-            radio.text = colorNames[i]
-            radio.setTextColor(color)
-            radio.setOnClickListener { drawingCanvas.setSelectedTextColor(color) }
-            colorGroup.addView(radio)
+        val colorGroup = LinearLayout(requireContext())
+        colorGroup.orientation = LinearLayout.HORIZONTAL
+        colors.forEach { color ->
+            val colorBox = View(requireContext())
+            val params = LinearLayout.LayoutParams(64, 64)
+            params.setMargins(8, 8, 8, 8)
+            colorBox.layoutParams = params
+            colorBox.setBackgroundColor(color)
+            colorBox.background = resources.getDrawable(R.drawable.color_box_bg, null)
+            colorBox.setOnClickListener {
+                drawingCanvas.setSelectedTextColor(color)
+                // Marcar seleccionado visualmente
+                for (i in 0 until colorGroup.childCount) {
+                    colorGroup.getChildAt(i).alpha = 0.5f
+                }
+                colorBox.alpha = 1f
+            }
+            colorBox.alpha = 0.5f
+            colorGroup.addView(colorBox)
         }
+        if (colorGroup.childCount > 0) colorGroup.getChildAt(0).alpha = 1f
         contextualMenu.addView(colorGroup)
         // Selector de tamaño de letra
         val seekBar = SeekBar(requireContext())
@@ -268,6 +310,28 @@ class DrawingFragment : Fragment() {
         contextualMenu.addView(seekBar)
         // (Opcional) Selector de fuente
         // ...
+    }
+
+    private fun showImageOptions() {
+        contextualMenu.removeAllViews()
+        contextualMenu.visibility = View.VISIBLE
+        // Botón para subir imagen
+        val btnAddImage = ImageButton(requireContext())
+        btnAddImage.setImageResource(android.R.drawable.ic_menu_add)
+        btnAddImage.contentDescription = "Subir imagen"
+        btnAddImage.setOnClickListener {
+            isImageInsertMode = true
+            Toast.makeText(requireContext(), "Toca un área vacía para agregar una imagen", Toast.LENGTH_SHORT).show()
+        }
+        contextualMenu.addView(btnAddImage)
+        // Botón para recortar (placeholder)
+        val btnCrop = ImageButton(requireContext())
+        btnCrop.setImageResource(android.R.drawable.ic_menu_crop)
+        btnCrop.contentDescription = "Recortar imagen"
+        btnCrop.setOnClickListener {
+            Toast.makeText(requireContext(), "Función de recorte próximamente", Toast.LENGTH_SHORT).show()
+        }
+        contextualMenu.addView(btnCrop)
     }
 
     private fun showSaveOptions() {
@@ -289,42 +353,19 @@ class DrawingFragment : Fragment() {
             .show()
     }
 
-    private fun autoSaveNote() {
-        // Guardar automáticamente solo en formato editable (JSON), NO como imagen ni PDF
-        val noteNameSafe = (noteName ?: "nota").replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-        val file = File(requireContext().filesDir, "$noteNameSafe.json")
-        val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-        val adapter = moshi.adapter(DrawingData::class.java)
-        val data = drawingCanvas.getDrawingData(requireContext())
-        val json = adapter.toJson(data)
-        file.writeText(json)
-    }
-
     private fun saveEditableNote() {
-        val noteNameSafe = (noteName ?: "nota").replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-        val file = File(requireContext().filesDir, "$noteNameSafe.json")
+        // Guardar en el archivo original si existe, si no crear uno nuevo
+        val file = if (jsonPath != null) {
+            File(jsonPath!!)
+        } else {
+            val noteNameSafe = (noteName ?: "nota_${System.currentTimeMillis()}").replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            File(requireContext().filesDir, "$noteNameSafe.json")
+        }
         val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
         val adapter = moshi.adapter(DrawingData::class.java)
         val data = drawingCanvas.getDrawingData(requireContext())
         val json = adapter.toJson(data)
         file.writeText(json)
-    }
-
-    private fun showTextDialog(x: Float, y: Float) {
-        val input = EditText(requireContext())
-        input.inputType = InputType.TYPE_CLASS_TEXT
-        AlertDialog.Builder(requireContext())
-            .setTitle("Agregar texto")
-            .setView(input)
-            .setPositiveButton("Agregar") { _, _ ->
-                val text = input.text.toString()
-                // Usar color y tamaño actuales del menú contextual
-                val color = getCurrentTextColorFromMenu() ?: Color.BLACK
-                val size = getCurrentTextSizeFromMenu() ?: 48f
-                drawingCanvas.addTextElement(text, x, y, color, size)
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
     }
 
     // Helpers para obtener color/tamaño seleccionados en el menú contextual
@@ -350,5 +391,13 @@ class DrawingFragment : Fragment() {
             }
         }
         return null
+    }
+
+    private fun updateNavbarSelection() {
+        val normalBg = android.R.color.transparent
+        btnDraw.setBackgroundResource(if (activeTool == Tool.DRAW) R.drawable.navbar_btn_selected else normalBg)
+        btnEraser.setBackgroundResource(if (activeTool == Tool.ERASER) R.drawable.navbar_btn_selected else normalBg)
+        btnText.setBackgroundResource(if (activeTool == Tool.TEXT) R.drawable.navbar_btn_selected else normalBg)
+        btnImage.setBackgroundResource(if (activeTool == Tool.IMAGE) R.drawable.navbar_btn_selected else normalBg)
     }
 } 

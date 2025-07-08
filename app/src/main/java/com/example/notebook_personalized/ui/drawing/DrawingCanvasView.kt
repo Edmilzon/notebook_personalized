@@ -5,6 +5,7 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.view.View.OnTouchListener
 import com.example.notebook_personalized.data.model.Stroke
 import com.example.notebook_personalized.data.model.PointF
 import com.squareup.moshi.Moshi
@@ -18,6 +19,11 @@ import com.example.notebook_personalized.data.model.DrawingData
 import com.example.notebook_personalized.data.model.ImageElementSerializable
 import java.io.File
 import java.io.FileOutputStream
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.view.inputmethod.InputMethodManager
+import com.example.notebook_personalized.R
+import android.view.ViewGroup
 
 class DrawingCanvasView @JvmOverloads constructor(
     context: Context,
@@ -64,6 +70,16 @@ class DrawingCanvasView @JvmOverloads constructor(
 
     private var currentStroke: Stroke? = null
 
+    private var activeEditText: EditText? = null
+    private var activeTextElement: TextElement? = null
+
+    enum class Tool { NONE, DRAW, ERASER, TEXT, IMAGE }
+    private var activeTool: Tool = Tool.DRAW
+
+    private var selectedImage: ImageElement? = null
+    private var resizingHandle: Int = -1 // 0: top-left, 1: top-right, 2: bottom-right, 3: bottom-left
+    private val handleSize = 40f
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.drawColor(backgroundColor)
@@ -74,16 +90,40 @@ class DrawingCanvasView @JvmOverloads constructor(
         canvas.drawPath(currentPath, drawPaint)
         // Dibuja imágenes
         for (img in imageElements) {
-            canvas.drawBitmap(img.bitmap, null, Rect(img.x.toInt(), img.y.toInt(), (img.x+img.width).toInt(), (img.y+img.height).toInt()), null)
+            canvas.drawBitmap(img.bitmap, null, RectF(img.x, img.y, img.x+img.width, img.y+img.height), null)
+            // Si está seleccionada, dibujar borde y handles
+            if (img == selectedImage) {
+                val borderPaint = Paint().apply {
+                    color = Color.BLUE
+                    style = Paint.Style.STROKE
+                    strokeWidth = 4f
+                }
+                canvas.drawRect(img.x, img.y, img.x+img.width, img.y+img.height, borderPaint)
+                val handlePaint = Paint().apply {
+                    color = Color.WHITE
+                    style = Paint.Style.FILL
+                }
+                // Esquinas: 0=TL, 1=TR, 2=BR, 3=BL
+                val handles = arrayOf(
+                    Pair(img.x, img.y),
+                    Pair(img.x+img.width, img.y),
+                    Pair(img.x+img.width, img.y+img.height),
+                    Pair(img.x, img.y+img.height)
+                )
+                for ((hx, hy) in handles) {
+                    canvas.drawCircle(hx, hy, handleSize, handlePaint)
+                    canvas.drawCircle(hx, hy, handleSize-4, borderPaint)
+                }
+            }
         }
-        // Dibuja textos
+        // Dibuja textos (oculta el que está siendo editado)
         for (txt in textElements) {
+            if (activeTextElement != null && txt === activeTextElement && activeEditText != null) continue
             textPaint.color = txt.color
             textPaint.textSize = txt.textSize
             textPaint.style = Paint.Style.FILL
             canvas.drawText(txt.text, txt.x, txt.y, textPaint)
             if (txt.isSelected) {
-                // Dibuja un rectángulo alrededor del texto seleccionado
                 val bounds = Rect()
                 textPaint.getTextBounds(txt.text, 0, txt.text.length, bounds)
                 bounds.offset(txt.x.toInt(), txt.y.toInt() - bounds.height())
@@ -98,6 +138,103 @@ class DrawingCanvasView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (activeTool == Tool.IMAGE) {
+            val x = event.x
+            val y = event.y
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // ¿Tocó un handle de la imagen seleccionada?
+                    if (selectedImage != null) {
+                        val handles = arrayOf(
+                            Pair(selectedImage!!.x, selectedImage!!.y),
+                            Pair(selectedImage!!.x+selectedImage!!.width, selectedImage!!.y),
+                            Pair(selectedImage!!.x+selectedImage!!.width, selectedImage!!.y+selectedImage!!.height),
+                            Pair(selectedImage!!.x, selectedImage!!.y+selectedImage!!.height)
+                        )
+                        for ((i, handle) in handles.withIndex()) {
+                            if (Math.abs(x-handle.first) < handleSize && Math.abs(y-handle.second) < handleSize) {
+                                resizingHandle = i
+                                return true
+                            }
+                        }
+                    }
+                    // ¿Tocó una imagen?
+                    val img = findImageAt(x, y)
+                    if (img != null) {
+                        selectedImage = img
+                        movingImage = img
+                        lastTouchX = x
+                        lastTouchY = y
+                        resizingHandle = -1
+                        invalidate()
+                        return true
+                    }
+                    // Tocar fuera de cualquier imagen: permitir agregar nueva
+                    if (selectedImage != null) {
+                        selectedImage = null
+                        resizingHandle = -1
+                        invalidate()
+                    }
+                    return false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (resizingHandle != -1 && selectedImage != null) {
+                        // Redimensionar según el handle
+                        val img = selectedImage!!
+                        val minSize = 60f
+                        when (resizingHandle) {
+                            0 -> { // top-left
+                                val newRight = img.x + img.width
+                                val newBottom = img.y + img.height
+                                img.x = x.coerceAtMost(newRight-minSize)
+                                img.y = y.coerceAtMost(newBottom-minSize)
+                                img.width = newRight - img.x
+                                img.height = newBottom - img.y
+                            }
+                            1 -> { // top-right
+                                val newLeft = img.x
+                                val newBottom = img.y + img.height
+                                img.y = y.coerceAtMost(newBottom-minSize)
+                                img.width = (x - newLeft).coerceAtLeast(minSize)
+                                img.height = newBottom - img.y
+                            }
+                            2 -> { // bottom-right
+                                val newLeft = img.x
+                                val newTop = img.y
+                                img.width = (x - newLeft).coerceAtLeast(minSize)
+                                img.height = (y - newTop).coerceAtLeast(minSize)
+                            }
+                            3 -> { // bottom-left
+                                val newRight = img.x + img.width
+                                val newTop = img.y
+                                img.x = x.coerceAtMost(newRight-minSize)
+                                img.width = newRight - img.x
+                                img.height = (y - newTop).coerceAtLeast(minSize)
+                            }
+                        }
+                        invalidate()
+                        return true
+                    }
+                    if (movingImage != null) {
+                        val dx = x - lastTouchX
+                        val dy = y - lastTouchY
+                        movingImage?.x = (movingImage?.x ?: 0f) + dx
+                        movingImage?.y = (movingImage?.y ?: 0f) + dy
+                        lastTouchX = x
+                        lastTouchY = y
+                        invalidate()
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    movingImage = null
+                    resizingHandle = -1
+                }
+            }
+            return true
+        }
+        // Solo permitir dibujar si la herramienta activa es DRAW o ERASER
+        if (activeTool != Tool.DRAW && activeTool != Tool.ERASER) return false
         val x = event.x
         val y = event.y
         when (event.action) {
@@ -197,9 +334,11 @@ class DrawingCanvasView @JvmOverloads constructor(
         return null
     }
 
-    private fun findImageAt(x: Float, y: Float): ImageElement? {
+    fun findImageAt(x: Float, y: Float): ImageElement? {
+        val tolerance = 2f // margen para toques imprecisos
         for (img in imageElements.reversed()) {
-            if (x >= img.x && x <= img.x + img.width && y >= img.y && y <= img.y + img.height) {
+            if (x >= img.x - tolerance && x <= img.x + img.width + tolerance &&
+                y >= img.y - tolerance && y <= img.y + img.height + tolerance) {
                 return img
             }
         }
@@ -375,12 +514,13 @@ class DrawingCanvasView @JvmOverloads constructor(
     }
 
     fun addImageElement(bitmap: Bitmap, x: Float, y: Float, width: Float, height: Float) {
-        // Limitar tamaño máximo de imagen (ej: 600x600)
-        val maxDim = 600f
-        val scale = minOf(maxDim / width, maxDim / height, 1f)
-        val newWidth = width * scale
-        val newHeight = height * scale
-        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth.toInt(), newHeight.toInt(), true)
+        // Mantener tamaño y calidad original, pero ajustar si excede el canvas
+        val maxW = width.coerceAtMost(this.width.toFloat())
+        val maxH = height.coerceAtMost(this.height.toFloat())
+        val scale = minOf(maxW / bitmap.width, maxH / bitmap.height, 1f)
+        val newWidth = bitmap.width * scale
+        val newHeight = bitmap.height * scale
+        val scaledBitmap = if (scale < 1f) Bitmap.createScaledBitmap(bitmap, newWidth.toInt(), newHeight.toInt(), true) else bitmap
         imageElements.add(ImageElement(scaledBitmap, x, y, newWidth, newHeight))
         invalidate()
     }
@@ -445,5 +585,110 @@ class DrawingCanvasView @JvmOverloads constructor(
             }
         }
         invalidate()
+    }
+
+    fun startTextInput(x: Float, y: Float, color: Int, textSize: Float, parent: FrameLayout) {
+        // Buscar si hay un texto en la posición tocada
+        val touchedText = findTextAt(x, y)
+        // Eliminar EditText anterior de forma segura
+        closeActiveEditText()
+        if (touchedText != null) {
+            // Editar texto existente
+            activeTextElement = touchedText
+        } else {
+            // Crear nuevo texto
+            val newText = TextElement("", x, y, color, textSize)
+            textElements.add(newText)
+            activeTextElement = newText
+        }
+        invalidate()
+        val editText = EditText(context)
+        editText.setText(activeTextElement?.text ?: "")
+        editText.setTextColor(color)
+        editText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textSize)
+        editText.setBackgroundResource(R.drawable.text_input_bg)
+        val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+        params.leftMargin = (activeTextElement?.x ?: x).toInt()
+        params.topMargin = (activeTextElement?.y ?: y).toInt()
+        editText.layoutParams = params
+        parent.addView(editText)
+        editText.requestFocus()
+        editText.setSelection(editText.text.length)
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+        activeEditText = editText
+        // Actualizar el texto en tiempo real
+        editText.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                activeTextElement?.text = s.toString()
+                invalidate()
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+        // Permitir mover el texto arrastrando el EditText
+        editText.setOnTouchListener(object : OnTouchListener {
+            var lastX = 0f
+            var lastY = 0f
+            override fun onTouch(v: View?, event: MotionEvent): Boolean {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        lastX = event.rawX
+                        lastY = event.rawY
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = event.rawX - lastX
+                        val dy = event.rawY - lastY
+                        params.leftMargin += dx.toInt()
+                        params.topMargin += dy.toInt()
+                        editText.layoutParams = params
+                        activeTextElement?.x = params.leftMargin.toFloat()
+                        activeTextElement?.y = params.topMargin.toFloat()
+                        lastX = event.rawX
+                        lastY = event.rawY
+                        invalidate()
+                    }
+                }
+                return false
+            }
+        })
+        // Al perder foco, quitar el EditText y mostrar el texto fijo
+        editText.setOnFocusChangeListener { v, hasFocus ->
+            if (!hasFocus) {
+                val parentView = editText.parent as? ViewGroup
+                if (parentView != null) {
+                    try {
+                        parentView.removeView(editText)
+                    } catch (e: Exception) {
+                        // Ya fue removido, ignorar
+                    }
+                }
+                if (activeEditText == editText) {
+                    activeEditText = null
+                    activeTextElement = null
+                }
+                invalidate()
+            }
+        }
+    }
+
+    fun setActiveTool(tool: Tool) {
+        activeTool = tool
+    }
+
+    fun closeActiveEditText() {
+        activeEditText?.let { editText ->
+            val parentView = editText.parent
+            if (parentView is ViewGroup) {
+                try {
+                    parentView.removeView(editText)
+                } catch (e: Exception) {
+                    // Ya fue removido, ignorar
+                }
+            }
+            activeEditText = null
+            activeTextElement = null
+            invalidate()
+        }
     }
 } 
