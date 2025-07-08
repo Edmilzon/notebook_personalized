@@ -122,11 +122,14 @@ class DrawingCanvasView @JvmOverloads constructor(
             textPaint.color = txt.color
             textPaint.textSize = txt.textSize
             textPaint.style = Paint.Style.FILL
-            canvas.drawText(txt.text, txt.x, txt.y, textPaint)
+            // Calcular altura del texto
+            val bounds = Rect()
+            textPaint.getTextBounds(txt.text, 0, txt.text.length, bounds)
+            val textHeight = bounds.height()
+            // Dibujar el texto alineando la baseline correctamente
+            canvas.drawText(txt.text, txt.x, txt.y + textHeight, textPaint)
             if (txt.isSelected) {
-                val bounds = Rect()
-                textPaint.getTextBounds(txt.text, 0, txt.text.length, bounds)
-                bounds.offset(txt.x.toInt(), txt.y.toInt() - bounds.height())
+                bounds.offset(txt.x.toInt(), txt.y.toInt())
                 val selPaint = Paint().apply {
                     color = Color.BLUE
                     style = Paint.Style.STROKE
@@ -320,13 +323,13 @@ class DrawingCanvasView @JvmOverloads constructor(
 
     private fun findTextAt(x: Float, y: Float): TextElement? {
         for (txt in textElements.reversed()) {
-            val bounds = Rect()
             textPaint.textSize = txt.textSize
+            val bounds = Rect()
             textPaint.getTextBounds(txt.text, 0, txt.text.length, bounds)
             val left = txt.x
-            val top = txt.y - bounds.height()
+            val top = txt.y
             val right = txt.x + bounds.width()
-            val bottom = txt.y
+            val bottom = txt.y + bounds.height()
             if (x in left..right && y in top..bottom) {
                 return txt
             }
@@ -596,7 +599,7 @@ class DrawingCanvasView @JvmOverloads constructor(
             // Editar texto existente
             activeTextElement = touchedText
         } else {
-            // Crear nuevo texto
+            // Crear nuevo texto (guardar y como esquina superior)
             val newText = TextElement("", x, y, color, textSize)
             textElements.add(newText)
             activeTextElement = newText
@@ -642,6 +645,7 @@ class DrawingCanvasView @JvmOverloads constructor(
                         params.leftMargin += dx.toInt()
                         params.topMargin += dy.toInt()
                         editText.layoutParams = params
+                        // Guardar la esquina superior como posición Y
                         activeTextElement?.x = params.leftMargin.toFloat()
                         activeTextElement?.y = params.topMargin.toFloat()
                         lastX = event.rawX
