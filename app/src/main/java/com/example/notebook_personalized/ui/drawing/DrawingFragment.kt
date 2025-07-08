@@ -15,18 +15,29 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.Toast
+import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import com.example.notebook_personalized.R
 import com.example.notebook_personalized.data.model.TextElement
+import com.example.notebook_personalized.data.model.Stroke
+import com.example.notebook_personalized.data.model.DrawingData
 import com.example.notebook_personalized.ui.MainActivity
 import com.example.notebook_personalized.ui.drawing.DrawingCanvasView
+import java.io.File
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
 class DrawingFragment : Fragment() {
     private lateinit var drawingCanvas: DrawingCanvasView
     private var isEraserOn = false
     private var pendingTextPosition: Pair<Float, Float>? = null
     private var pendingImagePosition: Pair<Float, Float>? = null
+    private var noteName: String? = null
+    private var autoSavePath: String? = null
 
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
@@ -52,14 +63,31 @@ class DrawingFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         drawingCanvas = view.findViewById(R.id.drawing_canvas)
 
+        // Obtener el nombre de la nota si viene de los argumentos
+        noteName = arguments?.getString("noteName")
+        noteName?.let {
+            activity?.title = it
+        }
+
         // Cargar nota JSON si se abre desde la lista
         arguments?.getString("jsonPath")?.let { jsonPath ->
-            val success = drawingCanvas.importFromJson(requireContext(), jsonPath)
-            if (success) {
-                Toast.makeText(requireContext(), "Nota cargada correctamente", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(requireContext(), "Error al cargar la nota", Toast.LENGTH_SHORT).show()
+            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            val adapter = moshi.adapter(DrawingData::class.java)
+            val file = File(jsonPath)
+            if (file.exists()) {
+                val json = file.readText()
+                val loadedData = adapter.fromJson(json)
+                if (loadedData != null) {
+                    drawingCanvas.setDrawingData(requireContext(), loadedData)
+                }
             }
+        }
+
+        // Guardado automático cada vez que se dibuja o edita
+        drawingCanvas.setOnTouchListener { v, event ->
+            val handled = v.onTouchEvent(event)
+            autoSaveNote()
+            return@setOnTouchListener handled
         }
 
         view.findViewById<ImageButton>(R.id.btn_color).setOnClickListener {
@@ -119,6 +147,19 @@ class DrawingFragment : Fragment() {
             }
             false
         }
+
+        // Manejar el back para volver siempre al dashboard
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                findNavController().popBackStack()
+            }
+        })
+
+        // Botón de salir (check)
+        view.findViewById<ImageButton>(R.id.btn_exit).setOnClickListener {
+            saveEditableNote()
+            findNavController().popBackStack()
+        }
     }
 
     private fun showColorPicker() {
@@ -148,7 +189,7 @@ class DrawingFragment : Fragment() {
     }
 
     private fun showSaveOptions() {
-        val options = arrayOf("Guardar como Imagen", "Exportar a PDF", "Guardar como JSON")
+        val options = arrayOf("Guardar como Imagen", "Exportar a PDF")
         AlertDialog.Builder(requireContext())
             .setTitle("Guardar/Exportar")
             .setItems(options) { _, which ->
@@ -156,26 +197,20 @@ class DrawingFragment : Fragment() {
                     0 -> {
                         val path = drawingCanvas.saveToGallery(requireContext())
                         Toast.makeText(requireContext(), if (path != null) "Imagen guardada en $path" else "Error al guardar imagen", Toast.LENGTH_SHORT).show()
-                        notifyNoteSaved()
                     }
                     1 -> {
                         val path = drawingCanvas.saveToPdf(requireContext())
                         Toast.makeText(requireContext(), if (path != null) "PDF guardado en $path" else "Error al exportar PDF", Toast.LENGTH_SHORT).show()
-                        notifyNoteSaved()
-                    }
-                    2 -> {
-                        val path = drawingCanvas.exportToJson(requireContext())
-                        Toast.makeText(requireContext(), if (path != null) "JSON guardado en $path" else "Error al guardar JSON", Toast.LENGTH_SHORT).show()
-                        notifyNoteSaved()
                     }
                 }
             }
             .show()
     }
 
-    private fun notifyNoteSaved() {
-        // Notificar que se guardó una nota para actualizar la lista
-        (activity as? MainActivity)?.onNoteSaved()
+    private fun autoSaveNote() {
+        // Guardar automáticamente como imagen (y PDF si quieres)
+        autoSavePath = drawingCanvas.saveToGallery(requireContext())
+        // Si quieres también PDF: drawingCanvas.saveToPdf(requireContext())
     }
 
     private fun showTextDialog(x: Float, y: Float) {
@@ -226,5 +261,15 @@ class DrawingFragment : Fragment() {
             }
         }
         return null
+    }
+
+    private fun saveEditableNote() {
+        val noteNameSafe = (noteName ?: "nota").replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val file = File(requireContext().filesDir, "$noteNameSafe.json")
+        val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+        val adapter = moshi.adapter(DrawingData::class.java)
+        val data = drawingCanvas.getDrawingData(requireContext())
+        val json = adapter.toJson(data)
+        file.writeText(json)
     }
 } 

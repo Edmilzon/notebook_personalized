@@ -14,6 +14,10 @@ import com.example.notebook_personalized.data.model.TextElement
 import com.example.notebook_personalized.data.model.ImageElement
 import android.graphics.Rect
 import android.graphics.Paint.Align
+import com.example.notebook_personalized.data.model.DrawingData
+import com.example.notebook_personalized.data.model.ImageElementSerializable
+import java.io.File
+import java.io.FileOutputStream
 
 class DrawingCanvasView @JvmOverloads constructor(
     context: Context,
@@ -248,21 +252,20 @@ class DrawingCanvasView @JvmOverloads constructor(
     }
 
     fun saveToPdf(context: Context): String? {
-        val pdfDocument = android.graphics.pdf.PdfDocument()
-        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(width, height, 1).create()
-        val page = pdfDocument.startPage(pageInfo)
-        val canvas = page.canvas
-        draw(canvas)
-        pdfDocument.finishPage(page)
-
-        // Directorio público para PDFs
-        val picturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES)
-        val appDir = java.io.File(picturesDir, "NotebookPersonalized")
-        if (!appDir.exists()) appDir.mkdirs()
-
-        val fileName = "note_${System.currentTimeMillis()}.pdf"
-        val file = java.io.File(appDir, fileName)
         return try {
+            val pdfDocument = android.graphics.pdf.PdfDocument()
+            val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(width, height, 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+            draw(canvas)
+            pdfDocument.finishPage(page)
+
+            val picturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES)
+            val appDir = java.io.File(picturesDir, "NotebookPersonalized")
+            if (!appDir.exists()) appDir.mkdirs()
+
+            val fileName = "note_${System.currentTimeMillis()}.pdf"
+            val file = java.io.File(appDir, fileName)
             val fos = java.io.FileOutputStream(file)
             pdfDocument.writeTo(fos)
             fos.flush()
@@ -271,24 +274,21 @@ class DrawingCanvasView @JvmOverloads constructor(
             file.absolutePath
         } catch (e: Exception) {
             e.printStackTrace()
-            pdfDocument.close()
             null
         }
     }
 
-    // Exportar a JSON
     fun exportToJson(context: Context): String? {
-        val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-        val type = Types.newParameterizedType(List::class.java, Stroke::class.java)
-        val adapter = moshi.adapter<List<Stroke>>(type)
-        val json = adapter.toJson(strokes)
-        // Guardar en archivo público
-        val picturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES)
-        val appDir = java.io.File(picturesDir, "NotebookPersonalized")
-        if (!appDir.exists()) appDir.mkdirs()
-        val fileName = "note_${System.currentTimeMillis()}.json"
-        val file = java.io.File(appDir, fileName)
         return try {
+            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            val type = Types.newParameterizedType(List::class.java, Stroke::class.java)
+            val adapter = moshi.adapter<List<Stroke>>(type)
+            val json = adapter.toJson(strokes)
+            val picturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES)
+            val appDir = java.io.File(picturesDir, "NotebookPersonalized")
+            if (!appDir.exists()) appDir.mkdirs()
+            val fileName = "note_${System.currentTimeMillis()}.json"
+            val file = java.io.File(appDir, fileName)
             file.writeText(json)
             file.absolutePath
         } catch (e: Exception) {
@@ -349,6 +349,68 @@ class DrawingCanvasView @JvmOverloads constructor(
 
     fun addImageElement(bitmap: Bitmap, x: Float, y: Float, width: Float, height: Float) {
         imageElements.add(ImageElement(bitmap, x, y, width, height))
+        invalidate()
+    }
+
+    fun setStrokes(newStrokes: List<Stroke>) {
+        strokes.clear()
+        strokes.addAll(newStrokes)
+        paths.clear()
+        for (stroke in newStrokes) {
+            val path = Path()
+            if (stroke.points.isNotEmpty()) {
+                path.moveTo(stroke.points[0].x, stroke.points[0].y)
+                for (point in stroke.points.drop(1)) {
+                    path.lineTo(point.x, point.y)
+                }
+            }
+            val paint = Paint(drawPaint)
+            paint.color = stroke.color
+            paint.strokeWidth = stroke.strokeWidth
+            paths.add(Pair(path, paint))
+        }
+        invalidate()
+    }
+
+    fun getStrokes(): List<Stroke> {
+        return strokes.toList()
+    }
+
+    fun getDrawingData(context: Context): DrawingData {
+        // Guardar imágenes como archivos y obtener rutas
+        val imageSerializables = imageElements.mapIndexed { idx, img ->
+            val fileName = "img_${System.currentTimeMillis()}_$idx.png"
+            val file = File(context.filesDir, fileName)
+            val fos = FileOutputStream(file)
+            img.bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            fos.flush()
+            fos.close()
+            ImageElementSerializable(
+                imagePath = file.absolutePath,
+                x = img.x,
+                y = img.y,
+                width = img.width,
+                height = img.height
+            )
+        }
+        return DrawingData(
+            strokes = strokes.toList(),
+            texts = textElements.toList(),
+            images = imageSerializables
+        )
+    }
+
+    fun setDrawingData(context: Context, data: DrawingData) {
+        setStrokes(data.strokes)
+        textElements.clear()
+        textElements.addAll(data.texts)
+        imageElements.clear()
+        data.images.forEach { imgSer ->
+            val bitmap = BitmapFactory.decodeFile(imgSer.imagePath)
+            if (bitmap != null) {
+                imageElements.add(ImageElement(bitmap, imgSer.x, imgSer.y, imgSer.width, imgSer.height))
+            }
+        }
         invalidate()
     }
 } 

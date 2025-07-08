@@ -6,12 +6,17 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.notebook_personalized.R
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import java.io.File
+import android.widget.EditText
+import android.text.InputType
+import androidx.appcompat.app.AlertDialog
+import androidx.navigation.fragment.findNavController
 
 class NotesListFragment : Fragment() {
     private lateinit var notesRecyclerView: RecyclerView
@@ -39,11 +44,7 @@ class NotesListFragment : Fragment() {
         notesRecyclerView.adapter = notesAdapter
 
         fabNewNote.setOnClickListener {
-            // Navegar a la pizarra vacía (DrawingFragment)
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.nav_host_fragment, com.example.notebook_personalized.ui.drawing.DrawingFragment())
-                .addToBackStack(null)
-                .commit()
+            showCreateNoteDialog()
         }
     }
 
@@ -52,42 +53,41 @@ class NotesListFragment : Fragment() {
         loadNotes()
     }
 
-    fun loadNotes() {
-        val picturesDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES)
-        val appDir = File(picturesDir, "NotebookPersonalized")
-        if (appDir.exists()) {
-            notesList = appDir.listFiles()?.filter {
-                it.name.endsWith(".png") || it.name.endsWith(".pdf") || it.name.endsWith(".json")
-            }?.sortedByDescending { it.lastModified() } ?: emptyList()
-        } else {
-            notesList = emptyList()
-        }
+    private fun loadNotes() {
+        val appDir = requireContext().filesDir
+        notesList = appDir.listFiles()?.filter {
+            it.name.endsWith(".json")
+        }?.sortedByDescending { it.lastModified() } ?: emptyList()
         notesAdapter = NotesAdapter(notesList) { file ->
             openNote(file)
         }
         notesRecyclerView.adapter = notesAdapter
     }
 
+    private fun showCreateNoteDialog() {
+        val input = EditText(requireContext())
+        input.inputType = InputType.TYPE_CLASS_TEXT
+        input.hint = "Nombre de la nota"
+        AlertDialog.Builder(requireContext())
+            .setTitle("Crear nueva nota")
+            .setView(input)
+            .setPositiveButton("Crear") { _, _ ->
+                val noteName = input.text.toString().ifBlank { "Nota sin título" }
+                openNewNote(noteName)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun openNewNote(noteName: String) {
+        val args = Bundle()
+        args.putString("noteName", noteName)
+        findNavController().navigate(R.id.drawingFragment, args)
+    }
+
     private fun openNote(file: File) {
-        when {
-            file.name.endsWith(".png") || file.name.endsWith(".pdf") -> {
-                // Abrir con visor externo
-                val intent = Intent(Intent.ACTION_VIEW)
-                intent.setDataAndType(Uri.fromFile(file), if (file.name.endsWith(".png")) "image/*" else "application/pdf")
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                startActivity(Intent.createChooser(intent, "Abrir nota"))
-            }
-            file.name.endsWith(".json") -> {
-                // Abrir en la pizarra para edición
-                val fragment = com.example.notebook_personalized.ui.drawing.DrawingFragment()
-                val args = Bundle()
-                args.putString("jsonPath", file.absolutePath)
-                fragment.arguments = args
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.nav_host_fragment, fragment)
-                    .addToBackStack(null)
-                    .commit()
-            }
-        }
+        val args = Bundle()
+        args.putString("jsonPath", file.absolutePath)
+        findNavController().navigate(R.id.drawingFragment, args)
     }
 } 

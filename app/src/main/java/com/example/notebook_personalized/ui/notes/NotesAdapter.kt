@@ -6,8 +6,11 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.example.notebook_personalized.R
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 class NotesAdapter(
     private val notes: List<File>,
@@ -28,24 +31,20 @@ class NotesAdapter(
     inner class NoteViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val icon: ImageView = itemView.findViewById(R.id.note_icon)
         private val title: TextView = itemView.findViewById(R.id.note_title)
-        private val subtitle: TextView = itemView.findViewById(R.id.note_subtitle)
+        private val date: TextView = itemView.findViewById(R.id.note_date)
 
         fun bind(file: File) {
-            title.text = file.name
-            subtitle.text = when {
-                file.name.endsWith(".png") -> "Imagen"
-                file.name.endsWith(".pdf") -> "PDF"
-                file.name.endsWith(".json") -> "Nota editable"
-                else -> "Archivo"
+            title.text = file.nameWithoutExtension
+            date.text = SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()).format(Date(file.lastModified()))
+            if (file.name.endsWith(".png")) {
+                Glide.with(itemView).load(file).centerCrop().into(icon)
+            } else if (file.name.endsWith(".pdf")) {
+                icon.setImageResource(R.drawable.ic_pdf)
+            } else if (file.name.endsWith(".json")) {
+                icon.setImageResource(R.drawable.ic_note)
+            } else {
+                icon.setImageResource(R.drawable.ic_file)
             }
-            icon.setImageResource(
-                when {
-                    file.name.endsWith(".png") -> R.drawable.ic_image
-                    file.name.endsWith(".pdf") -> R.drawable.ic_pdf
-                    file.name.endsWith(".json") -> R.drawable.ic_note
-                    else -> R.drawable.ic_file
-                }
-            )
             itemView.setOnClickListener { onNoteClick(file) }
         }
     }
