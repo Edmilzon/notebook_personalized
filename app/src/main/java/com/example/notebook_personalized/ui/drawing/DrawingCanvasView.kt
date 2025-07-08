@@ -59,6 +59,11 @@ class DrawingCanvasView @JvmOverloads constructor(
         textAlign = Align.LEFT
     }
 
+    private var lastPathX = 0f
+    private var lastPathY = 0f
+
+    private var currentStroke: Stroke? = null
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.drawColor(backgroundColor)
@@ -116,6 +121,14 @@ class DrawingCanvasView @JvmOverloads constructor(
                 }
                 currentPath = Path()
                 currentPath.moveTo(x, y)
+                lastPathX = x
+                lastPathY = y
+                // Crear nuevo Stroke y agregar primer punto
+                currentStroke = Stroke(
+                    color = drawPaint.color,
+                    strokeWidth = drawPaint.strokeWidth,
+                    points = mutableListOf(PointF(x, y))
+                )
                 invalidate()
             }
             MotionEvent.ACTION_MOVE -> {
@@ -138,14 +151,28 @@ class DrawingCanvasView @JvmOverloads constructor(
                     invalidate()
                     return true
                 }
-                currentPath.lineTo(x, y)
+                // Trazado suave con quadTo
+                val dx = Math.abs(x - lastPathX)
+                val dy = Math.abs(y - lastPathY)
+                if (dx >= 2f || dy >= 2f) {
+                    currentPath.quadTo(lastPathX, lastPathY, (x + lastPathX) / 2, (y + lastPathY) / 2)
+                    lastPathX = x
+                    lastPathY = y
+                    // Agregar punto al Stroke
+                    currentStroke?.points?.add(PointF(x, y))
+                }
                 invalidate()
             }
             MotionEvent.ACTION_UP -> {
                 movingText = null
                 movingImage = null
+                currentPath.lineTo(x, y)
                 val newPaint = Paint(drawPaint)
                 paths.add(Pair(currentPath, newPaint))
+                // Finalizar y guardar el Stroke
+                currentStroke?.points?.add(PointF(x, y))
+                currentStroke?.let { strokes.add(it) }
+                currentStroke = null
                 currentPath = Path()
                 undonePaths.clear()
                 invalidate()
@@ -348,7 +375,13 @@ class DrawingCanvasView @JvmOverloads constructor(
     }
 
     fun addImageElement(bitmap: Bitmap, x: Float, y: Float, width: Float, height: Float) {
-        imageElements.add(ImageElement(bitmap, x, y, width, height))
+        // Limitar tamaño máximo de imagen (ej: 600x600)
+        val maxDim = 600f
+        val scale = minOf(maxDim / width, maxDim / height, 1f)
+        val newWidth = width * scale
+        val newHeight = height * scale
+        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth.toInt(), newHeight.toInt(), true)
+        imageElements.add(ImageElement(scaledBitmap, x, y, newWidth, newHeight))
         invalidate()
     }
 

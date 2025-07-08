@@ -5,40 +5,27 @@
     android:layout_height="match_parent"
     android:background="@color/canvas_bg">
 
-    <com.example.notebook_personalized.ui.drawing.DrawingCanvasView
-        android:id="@+id/drawing_canvas"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/canvas_bg" />
-
-    <!-- Barra de herramientas flotante -->
+    <!-- Barra de herramientas vertical -->
     <LinearLayout
-        android:id="@+id/drawing_tools_bar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:id="@+id/toolbar_vertical"
+        android:layout_width="64dp"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
         android:background="@drawable/toolbar_bg"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="96dp"
-        android:elevation="8dp"
-        android:padding="8dp">
+        android:layout_gravity="start|center_vertical"
+        android:paddingTop="32dp"
+        android:paddingBottom="32dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:elevation="8dp">
 
-        <!-- Botones de herramientas existentes -->
         <ImageButton
-            android:id="@+id/btn_color"
+            android:id="@+id/btn_draw"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="@android:color/transparent"
             android:src="@android:drawable/ic_menu_edit"
-            android:contentDescription="Color" />
-
-        <ImageButton
-            android:id="@+id/btn_stroke"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@android:color/transparent"
-            android:src="@android:drawable/ic_menu_manage"
-            android:contentDescription="Grosor" />
+            android:contentDescription="Dibujo" />
 
         <ImageButton
             android:id="@+id/btn_eraser"
@@ -47,6 +34,14 @@
             android:background="@android:color/transparent"
             android:src="@android:drawable/ic_menu_delete"
             android:contentDescription="Borrador" />
+
+        <ImageButton
+            android:id="@+id/btn_text"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_edit"
+            android:contentDescription="Texto" />
 
         <ImageButton
             android:id="@+id/btn_undo"
@@ -65,28 +60,12 @@
             android:contentDescription="Rehacer" />
 
         <ImageButton
-            android:id="@+id/btn_clear"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@android:color/transparent"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:contentDescription="Limpiar" />
-
-        <ImageButton
-            android:id="@+id/btn_save"
+            android:id="@+id/btn_export"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="@android:color/transparent"
             android:src="@android:drawable/ic_menu_save"
-            android:contentDescription="Guardar/Exportar" />
-
-        <ImageButton
-            android:id="@+id/btn_text"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@android:color/transparent"
-            android:src="@android:drawable/ic_menu_edit"
-            android:contentDescription="Texto" />
+            android:contentDescription="Exportar" />
 
         <ImageButton
             android:id="@+id/btn_image"
@@ -96,7 +75,6 @@
             android:src="@android:drawable/ic_menu_gallery"
             android:contentDescription="Imagen" />
 
-        <!-- Botón de check (✔️) para salir y guardar -->
         <ImageButton
             android:id="@+id/btn_exit"
             android:layout_width="48dp"
@@ -104,8 +82,29 @@
             android:background="@android:color/transparent"
             android:src="@android:drawable/ic_menu_save"
             android:tint="@color/purple_500"
-            android:contentDescription="Salir y guardar" />
+            android:contentDescription="Guardar y salir" />
+    </LinearLayout>
 
+    <com.example.notebook_personalized.ui.drawing.DrawingCanvasView
+        android:id="@+id/drawing_canvas"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="64dp"
+        android:background="@color/canvas_bg" />
+
+    <!-- Menú flotante contextual -->
+    <LinearLayout
+        android:id="@+id/contextual_menu"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/toolbar_bg"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="48dp"
+        android:elevation="8dp"
+        android:padding="12dp"
+        android:visibility="gone">
+        <!-- Aquí se inflarán dinámicamente las opciones según la herramienta activa -->
     </LinearLayout>
 
 </FrameLayout> 
