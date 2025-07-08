@@ -215,6 +215,7 @@ class DrawingCanvasView @JvmOverloads constructor(
                                 img.height = (y - newTop).coerceAtLeast(minSize)
                             }
                         }
+                        rescaleSelectedImage()
                         invalidate()
                         return true
                     }
@@ -516,7 +517,7 @@ class DrawingCanvasView @JvmOverloads constructor(
         }
     }
 
-    fun addImageElement(bitmap: Bitmap, x: Float, y: Float, width: Float, height: Float) {
+    fun addImageElement(bitmap: Bitmap, x: Float, y: Float, width: Float, height: Float, originalPath: String? = null) {
         // Mantener tamaño y calidad original, pero ajustar si excede el canvas
         val maxW = width.coerceAtMost(this.width.toFloat())
         val maxH = height.coerceAtMost(this.height.toFloat())
@@ -524,7 +525,7 @@ class DrawingCanvasView @JvmOverloads constructor(
         val newWidth = bitmap.width * scale
         val newHeight = bitmap.height * scale
         val scaledBitmap = if (scale < 1f) Bitmap.createScaledBitmap(bitmap, newWidth.toInt(), newHeight.toInt(), true) else bitmap
-        imageElements.add(ImageElement(scaledBitmap, x, y, newWidth, newHeight))
+        imageElements.add(ImageElement(scaledBitmap, x, y, newWidth, newHeight, originalPath))
         invalidate()
     }
 
@@ -693,6 +694,20 @@ class DrawingCanvasView @JvmOverloads constructor(
             activeEditText = null
             activeTextElement = null
             invalidate()
+        }
+    }
+
+    // Al redimensionar, reescalar desde el archivo original si existe
+    private fun rescaleSelectedImage() {
+        val img = selectedImage ?: return
+        val path = img.originalPath
+        if (path != null) {
+            val originalBitmap = BitmapFactory.decodeFile(path)
+            if (originalBitmap != null) {
+                val scaled = Bitmap.createScaledBitmap(originalBitmap, img.width.toInt(), img.height.toInt(), true)
+                img.bitmap = scaled
+                invalidate()
+            }
         }
     }
 } 

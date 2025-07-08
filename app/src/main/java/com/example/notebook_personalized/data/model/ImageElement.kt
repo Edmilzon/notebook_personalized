@@ -7,5 +7,6 @@ data class ImageElement(
     var x: Float,
     var y: Float,
     var width: Float,
-    var height: Float
+    var height: Float,
+    var originalPath: String? = null
 ) 

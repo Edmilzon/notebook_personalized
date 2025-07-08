@@ -36,6 +36,7 @@ import android.widget.RadioGroup
 import android.widget.ToggleButton
 import android.widget.FrameLayout
 import com.example.notebook_personalized.ui.drawing.DrawingCanvasView.Tool
+import android.graphics.Bitmap
 
 class DrawingFragment : Fragment() {
     private lateinit var drawingCanvas: DrawingCanvasView
@@ -57,8 +58,13 @@ class DrawingFragment : Fragment() {
             val inputStream = requireContext().contentResolver.openInputStream(it)
             val bitmap = BitmapFactory.decodeStream(inputStream)
             inputStream?.close()
+            // Guardar archivo temporal
+            val tempFile = File.createTempFile("img_${System.currentTimeMillis()}", ".png", requireContext().cacheDir)
+            tempFile.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
             pendingImagePosition?.let { pos ->
-                drawingCanvas.addImageElement(bitmap, pos.first, pos.second, 300f, 300f)
+                drawingCanvas.addImageElement(bitmap, pos.first, pos.second, 300f, 300f, tempFile.absolutePath)
                 pendingImagePosition = null
             }
         }
